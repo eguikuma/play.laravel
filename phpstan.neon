@@ -1,0 +1,15 @@
+includes:
+    - ./vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+    scanFiles:
+        - _ide_helper_models.php
+    paths:
+        - app
+        - bootstrap
+        - config
+        - database
+        - routes
+        - tests
+        - examples

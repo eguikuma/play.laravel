@@ -1,0 +1,130 @@
+services:
+  web:
+    container_name: web-container
+    build:
+      context: ./containers/nginx
+      dockerfile: Dockerfile
+    ports:
+      - '${FORWARD_APP_PORT:-80}:80'
+    volumes:
+      - '.:/var/www/html'
+    networks:
+      - local
+    depends_on:
+      - app
+
+  app:
+    container_name: app-container
+    build:
+      context: ./containers/php
+      dockerfile: Dockerfile
+      args:
+        XDEBUG_INSTALL: '${XDEBUG_INSTALL:-true}'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    environment:
+      XDEBUG_MODE: '${XDEBUG_MODE:-off}'
+    volumes:
+      - '.:/var/www/html'
+    networks:
+      - local
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    container_name: db-container
+    build:
+      context: ./containers/mysql
+      dockerfile: Dockerfile
+    ports:
+      - '${FORWARD_DB_PORT:-3306}:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: '${DB_DATABASE}'
+      MYSQL_USER: '${DB_USERNAME}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    volumes:
+      - 'db-store:/var/lib/mysql'
+      - './containers/mysql/my.cnf:/etc/mysql/conf.d/my.cnf'
+      - './containers/mysql/create-testing-db.sh:/docker-entrypoint-initdb.d/create-testing-db.sh'
+    networks:
+      - local
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - '-p${DB_PASSWORD}'
+      retries: 3
+      timeout: 5s
+
+  db.client:
+    container_name: db-client-container
+    image: adminer:4.8.1
+    restart: always
+    ports:
+      - '${FORWARD_DB_CLIENT_PORT:-8080}:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DESIGN: hydra
+    networks:
+      - local
+    depends_on:
+      - db
+
+  db.schema:
+    container_name: db-schema-container
+    build:
+      context: ./containers/schemaspy
+      dockerfile: Dockerfile
+    volumes:
+      - 'db-schema-store:/output'
+    command: >
+      java -jar /drivers/mysql-connector-java-8.0.30.jar
+      -t mysql
+      -host ${DB_HOST}
+      -port ${FORWARD_DB_PORT}
+      -db ${DB_DATABASE}
+      -u ${DB_USERNAME}
+      -p ${DB_PASSWORD}
+      -s ${DB_DATABASE}
+      -connprops allowPublicKeyRetrieval\\=true;useSSL\\=false
+    networks:
+      - local
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db.schema.web:
+    container_name: db-schema-web-container
+    image: nginx:alpine
+    ports:
+      - '${FORWARD_DB_SCHEMA_WEB_PORT:-4000}:80'
+    volumes:
+      - 'db-schema-store:/usr/share/nginx/html'
+    networks:
+      - local
+    depends_on:
+      - db.schema
+
+  mail:
+    container_name: mail-container
+    image: 'axllent/mailpit:latest'
+    ports:
+      - '${FORWARD_MAIL_PORT:-1025}:1025'
+      - '${FORWARD_MAIL_DASHBOARD_PORT:-8025}:8025'
+    networks:
+      - local
+
+networks:
+  local:
+    driver: bridge
+
+volumes:
+  db-store:
+    driver: local
+  db-schema-store:
+    driver: local

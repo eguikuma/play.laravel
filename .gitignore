@@ -1,0 +1,15 @@
+# dependencies
+/vendor
+
+# telescope
+/public/vendor
+
+# environment
+.env
+
+# helpers
+_ide*.php
+.phpstorm.meta.php
+
+# tests
+.phpunit.result.cache
